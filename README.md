@@ -1,3 +1,7 @@
+## SOC Detection Lab Architecture
+
+![SOC Detection Lab Architecture](architecture/Soc%20detection%20lab%20architecture.png)
+
 Detection Engineering Lab
 This repository documents the development of my personal detection engineering lab, focused on understanding how modern security operations teams monitor, detect, and respond to threats.
 The lab environment is designed to simulate realistic enterprise-style logging and security monitoring scenarios using virtualised systems.

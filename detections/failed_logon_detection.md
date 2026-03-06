@@ -7,6 +7,9 @@ T1110 – Brute Force
 This detection identifies multiple failed login attempts on a Windows host.  
 Repeated authentication failures may indicate password guessing or brute-force activity.
 
+## Attack Simulation
+To validate this detection, multiple failed login attempts were generated on the Windows 10 endpoint by entering incorrect credentials several times at the login screen.
+
 ## Data Source
 Windows Security Event Log
 
@@ -18,7 +21,6 @@ Event ID:
 index=main EventCode=4625
 | stats count by Account_Name, host
 | sort -count
-
 
 ## Investigation Steps
 

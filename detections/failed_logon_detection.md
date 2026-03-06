@@ -48,4 +48,4 @@ Logs were ingested into Splunk using the Splunk Universal Forwarder.
 
 ## Screenshots
 
-See `/screenshots/failed_logon_detection.png`
+![Failed Logon Detection](../screenshots/failed_logon_detection.png)

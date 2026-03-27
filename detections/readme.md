@@ -1,4 +1,3 @@
-
 # Detections
 
 | Detection | MITRE ATT&CK | Status |

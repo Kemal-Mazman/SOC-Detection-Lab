@@ -80,10 +80,14 @@ During testing, the detection did not initially appear in Splunk due to a time s
 
 The system was not synced with an NTP server, causing logs to be indexed with incorrect timestamps.
 
-After fixing tim<img width="1899" height="382" alt="Splunk" src="https://github.com/user-attachments/assets/cdae89c2-58e4-402f-8585-52469534e2a6" />
-e synchronization, the detection worked as expected.
+After fixing time synchronization, the detection worked as expected.
 
 ---
 
-## Screenshots<img width="643" height="121" alt="Powershell" src="https://github.com/user-attachments/assets/5435ed62-ce02-4872-b886-7a2b3142a7e8" />
+## Screenshots
+
+<img width="1899" height="382" alt="Splunk" src="https://github.com/user-attachments/assets/b9745a59-68b0-4a1f-973d-e651093ce13b" />
+
+<img width="643" height="121" alt="Powershell" src="https://github.com/user-attachments/assets/a84048ae-0646-41dd-ad29-0a2c8234c73d" />
+
 

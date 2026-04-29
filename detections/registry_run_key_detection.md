@@ -89,5 +89,7 @@ Logs were collected using Sysmon (Event ID 1 and Event ID 13) and forwarded to S
 ### Detection Output (Splunk)
 ![Detection Output](../screenshots/registry_run_key_detection_1.png)
 
+This output shows registry Run Key modification being detected via Sysmon Event ID 13.
+
 ### Attack Simulation (Command Execution)
 ![Attack Simulation](../screenshots/registry_run_key_detection_2.png)

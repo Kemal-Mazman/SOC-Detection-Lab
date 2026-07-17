@@ -13,7 +13,7 @@ window**, and **risk-score** each chain on *who performed it* — so legitimate 
 provisioning is triaged down while a real attacker stands out.
 
 > **The full story of this rebuild — with a measured before/after — is written up here:**
-> [From Lab-Brittle to Production-Ready: Tuning a Noisy Detection](../investigations/lab-brittle-to-production-ready.md)
+> [From Lab-Brittle to Production-Ready: Tuning a Noisy Detection](../investigations/lab-brittle-to-production.md)
 
 ---
 

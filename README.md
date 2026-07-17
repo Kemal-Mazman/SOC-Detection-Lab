@@ -4,7 +4,7 @@
 
 ![SOC Detection Lab Architecture](architecture/Soc%20detection%20lab%20architecture.png)
 
-> ### ⭐ Featured case study — [From Lab-Brittle to Production-Ready: Tuning a Noisy Detection](investigations/lab-brittle-to-production-ready.md)
+> ###  Featured case study — [From Lab-Brittle to Production-Ready: Tuning a Noisy Detection](investigations/lab-brittle-to-production-ready.md)
 >
 > Took an attack-chain detection from brittle and untested to correlated, time-bound, and noise-aware — then **measured** it against a realistic benign baseline.
 >

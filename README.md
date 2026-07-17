@@ -4,6 +4,15 @@
 
 ![SOC Detection Lab Architecture](architecture/Soc%20detection%20lab%20architecture.png)
 
+> ### ⭐ Featured case study — [From Lab-Brittle to Production-Ready: Tuning a Noisy Detection](investigations/lab-brittle-to-production-ready.md)
+>
+> Took an attack-chain detection from brittle and untested to correlated, time-bound, and noise-aware — then **measured** it against a realistic benign baseline.
+>
+> **Before:** every legitimate account provisioning flagged as an attack — 0% precision, all noise.
+> **After:** benign automation triaged to Low, the one real attack isolated as the only High — no hardcoded exclusions, no lost coverage.
+>
+> The half of detection engineering that matters isn't detecting the technique — it's telling malicious from busy. [Read the write-up →](investigations/lab-brittle-to-production-ready.md)
+
 ## Overview
 
 This repository documents the development of my personal SOC detection engineering lab.
@@ -15,6 +24,7 @@ The lab is designed to simulate a simplified enterprise-style SOC environment wh
 ## Current Portfolio Status
 
 * **Detections built so far:** 7
+* **Flagship work:** benign-baseline generation + behavioural false-positive tuning (see featured case study)
 * **Latest detection:** Local Account Admin + RDP Attack Chain
 * **Primary tools:** Splunk Enterprise, Sysmon, Windows Security Logs, Splunk Universal Forwarder
 * **Lab focus:** Detection engineering, attack simulation, log analysis, and SOC-style investigation workflows

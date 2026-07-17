@@ -11,7 +11,7 @@
 > **Before:** every legitimate account provisioning flagged as an attack — 0% precision, all noise.
 > **After:** benign automation triaged to Low, the one real attack isolated as the only High — no hardcoded exclusions, no lost coverage.
 >
-> The half of detection engineering that matters isn't detecting the technique — it's telling malicious from busy. [Read the write-up →](investigations/lab-brittle-to-production-ready.md)
+> The half of detection engineering that matters isn't detecting the technique — it's telling malicious from busy. [Read the write-up →](investigations/lab-brittle-to-production.md)
 
 ## Overview
 

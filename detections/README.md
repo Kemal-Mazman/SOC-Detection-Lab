@@ -9,3 +9,5 @@
 | [Windows Discovery Command Sequence](discovery_command_sequence_detection.md)                          | T1033, T1082, T1016, T1087, T1069                                     | Complete |
 | [Local Account Creation and Admin Group Modification](local_account_creation_admin_group_detection.md) | T1136.001, T1098, T1078                                               | Complete |
 | [Local Account Admin + RDP Attack Chain](local_account_admin_rdp_attack_chain_detection.md)            | T1033, T1082, T1016, T1087, T1069, T1136.001, T1098, T1078, T1021.001 | Complete |
+| [ClickFix PowerShell (Run Dialog + Windows Terminal Variant)](clickfix_powershell_lineage_detection.md) | T1204.004, T1059.001                                                  | Complete |
+| [RunMRU Interpreter Abuse](runmru_interpreter_abuse_detection.md)                                      | T1204.004                                                             | Complete |

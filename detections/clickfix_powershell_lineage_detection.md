@@ -74,7 +74,7 @@ AND ( immediate parent is explorer.exe          # classic Run-dialog variant
 ```
 
 Signals are **weighted** so a lone weak flag does not alert:
-- **Strong** (any one): `-EncodedCommand`/`-e`, `-WindowStyle Hidden`, or a download/decode cradle (`iex`, `iwr`, `Invoke-WebRequest`, `DownloadString`, `DownloadFile`, `Start-BitsTransfer`, `FromBase64String`).
+- **Strong** (any one): an encoded command followed by a base64 blob — matching every PowerShell alias for `-EncodedCommand` (`-e`, `-ec`, `-enc`, … through `-encodedcommand`), which adversaries rotate to evade literal `-EncodedCommand` matching; `-WindowStyle Hidden`; or a download/decode cradle (`iex`, `iwr`, `Invoke-WebRequest`, `DownloadString`, `DownloadFile`, `Start-BitsTransfer`, `FromBase64String`). The base64-length gate keeps this from matching `-ExecutionPolicy` (a weak signal), whose policy words are too short.
 - **Weak** (context only, needs 2+ for `medium`): `-NoProfile`, `-ExecutionPolicy Bypass/Unrestricted`, `-NonInteractive`.
 
 `-NoProfile` alone is deliberately **not** enough — it is extremely common in legitimate admin automation.
@@ -85,7 +85,7 @@ Signals are **weighted** so a lone weak flag does not alert:
 ```spl
 index=main source="WinEventLog:Microsoft-Windows-Sysmon/Operational" EventCode=1
 | eval strong=if(
-    match(CommandLine,"(?i)(?:^|\s)-(?:e|enc|encodedcommand)(?:\s|$)")
+    match(CommandLine,"(?i)(?:^|\s)-e[a-z]*\s+[A-Za-z0-9+/=]{16,}")
     OR match(CommandLine,"(?i)(?:^|\s)-(?:w|windowstyle)\s+hidden(?:\s|$)")
     OR match(CommandLine,"(?i)\b(?:iex|invoke-expression|invoke-webrequest|iwr|downloadstring|downloadfile|start-bitstransfer|frombase64string)\b"),
     1,0)
@@ -128,7 +128,7 @@ The explorer-parent-only rule that the tuned rule improves on:
 index=main source="WinEventLog:Microsoft-Windows-Sysmon/Operational" EventCode=1
 (Image="*\\powershell.exe" OR Image="*\\pwsh.exe") ParentImage="*\\explorer.exe"
 | eval strong=if(
-    match(CommandLine,"(?i)(?:^|\s)-(?:e|enc|encodedcommand)(?:\s|$)")
+    match(CommandLine,"(?i)(?:^|\s)-e[a-z]*\s+[A-Za-z0-9+/=]{16,}")
     OR match(CommandLine,"(?i)(?:^|\s)-(?:w|windowstyle)\s+hidden(?:\s|$)")
     OR match(CommandLine,"(?i)\b(?:iex|invoke-expression|invoke-webrequest|iwr|downloadstring|downloadfile|start-bitstransfer|frombase64string)\b"),1,0)
 | where strong>=1
@@ -166,7 +166,7 @@ The measurement query used:
 index=main source="WinEventLog:Microsoft-Windows-Sysmon/Operational" EventCode=1
 (Image="*\\powershell.exe" OR Image="*\\pwsh.exe")
 | eval strong=if(
-    match(CommandLine,"(?i)(?:^|\s)-(?:e|enc|encodedcommand)(?:\s|$)")
+    match(CommandLine,"(?i)(?:^|\s)-e[a-z]*\s+[A-Za-z0-9+/=]{16,}")
     OR match(CommandLine,"(?i)(?:^|\s)-(?:w|windowstyle)\s+hidden(?:\s|$)")
     OR match(CommandLine,"(?i)\b(?:iex|invoke-expression|invoke-webrequest|iwr|downloadstring|downloadfile|start-bitstransfer|frombase64string)\b"),1,0)
 | eval weak=
@@ -221,6 +221,12 @@ two-row output (`classic_run_dialog` via `explorer.exe`, and `windows_terminal` 
 
 ### False-positive analysis (strong vs weak-only)
 ![FP analysis](../screenshots/clickfix_fp_analysis.png)
+
+---
+
+## Future Work
+- **PowerShell Script Block Logging (Event ID 4104)** as a complement. Command-line detection (Event ID 1) can still be evaded by heavier obfuscation or flag mangling; 4104 records the de-obfuscated script block just before execution, regardless of how the invocation was wrapped in Run or Windows Terminal. *Not yet implemented in this lab — noted as the recommended next layer, not a validated detection.*
+- Migrate the ancestry walk from live `join` subsearches to an ingest-time enrichment (e.g. a `GrandparentImage`/ancestry field) or an accelerated `Endpoint.Processes` data model for enterprise-scale performance. Note: a flat `parent_process_name IN (...)` filter alone does **not** catch the Terminal variant, whose immediate parent is `powershell.exe` — the ancestry context must be carried on the event.
 
 ---
 

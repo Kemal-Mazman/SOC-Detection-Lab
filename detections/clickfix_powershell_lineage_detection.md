@@ -209,7 +209,12 @@ index=main source="WinEventLog:Microsoft-Windows-Sysmon/Operational" EventCode=1
 ## Screenshots
 
 ### Tuned rule — both variants caught (path-labelled)
-![Combined detection output](../screenshots/clickfix_combined_detection.png)
+The full result is wide; the two images below are the left and right halves of the same
+two-row output (`classic_run_dialog` via `explorer.exe`, and `windows_terminal` via the
+`explorer → WindowsTerminal → powershell` ancestry).
+
+![Combined detection output — detection_path / parent](../screenshots/clickfix_combined_detection.png)
+![Combined detection output — resolved ancestry (lvl2/lvl3)](../screenshots/clickfix_combined_detection_2.png)
 
 ### Naive rule — Terminal variant missed (50% coverage)
 ![Naive baseline output](../screenshots/clickfix_naive_baseline.png)

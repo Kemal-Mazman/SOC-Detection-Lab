@@ -47,7 +47,7 @@ The detection looks for multiple discovery-related commands executed within a sh
 ## Splunk SPL
 
 ```spl
-index=main host="DESKTOP-5BL4PPV" sourcetype="XmlWinEventLog:Microsoft-Windows-Sysmon/Operational" _index_earliest=-20m
+index=main host="DESKTOP-5BL4PPV" source="WinEventLog:Microsoft-Windows-Sysmon/Operational" _index_earliest=-20m
 | rex field=_raw "<EventID>(?<EventID>\d+)</EventID>"
 | rex field=_raw "Name='Image'>(?<Image>[^<]+)"
 | rex field=_raw "Name='CommandLine'>(?<CommandLine>[^<]+)"

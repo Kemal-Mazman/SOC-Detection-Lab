@@ -42,7 +42,7 @@ This was used as a safe test to validate detection logic.
 
 ## Splunk Detection Query
 ```spl
-index=main sourcetype="XmlWinEventLog:Microsoft-Windows-Sysmon/Operational"
+index=main source="WinEventLog:Microsoft-Windows-Sysmon/Operational"
 | rex field=_raw "Name='Image'>(?<Image>[^<]+)"
 | rex field=_raw "Name='CommandLine'>(?<CommandLine>[^<]+)"
 | rex field=_raw "Name='User'>(?<User>[^<]+)"

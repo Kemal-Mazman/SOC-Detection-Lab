@@ -1,0 +1,20 @@
+// Multiple Failed Logons (burst) — Windows Security Event 4625
+// Fires when a single account accumulates >= 10 failed logons
+// inside any 5-minute window.
+//
+// Runs unchanged against:
+//   - Microsoft Sentinel / Log Analytics  (real SecurityEvent table)
+//   - Azure Data Explorer free cluster     (mirror table, see test-data/adx-setup.kql)
+// because the ADX test table is created with the same name and columns.
+//
+// Gotchas exercised here (see ../../references/SPL-to-KQL-reference.md):
+//   - aggregates are named explicitly (failures, hosts, src_ips) — never rely on count_
+//   - filter (where EventID) sits ABOVE summarize
+//   - bin() on TimeGenerated replaces SPL's | bin _time span=5m
+
+SecurityEvent
+| where EventID == 4625
+| summarize failures = count(), hosts = dcount(Computer), src_ips = dcount(IpAddress)
+    by Account, bin(TimeGenerated, 5m)
+| where failures >= 10
+| order by failures desc

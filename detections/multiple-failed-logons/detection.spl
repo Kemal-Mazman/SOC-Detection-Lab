@@ -1,0 +1,15 @@
+``` Multiple Failed Logons (burst) — Windows Security Event 4625
+    Fires when a single account accumulates >= 10 failed logons
+    inside any 5-minute window. Detects password guessing / brute force
+    against one account, as opposed to a slow low-and-slow drip.
+
+    Assumes the Splunk Add-on for Microsoft Windows (TA_windows) /
+    CIM-normalised fields: user, host, src_ip. If your environment
+    surfaces raw fields, map Account_Name -> user and
+    Source_Network_Address -> src_ip first. See field-mapping.md.
+```
+index=wineventlog sourcetype="WinEventLog:Security" EventCode=4625
+| bin _time span=5m
+| stats count as failures, dc(host) as hosts, dc(src_ip) as src_ips by user, _time
+| where failures >= 10
+| sort - failures

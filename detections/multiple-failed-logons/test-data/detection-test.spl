@@ -1,0 +1,5 @@
+index=detection_lab_test sourcetype=csv EventID=4625
+| bin _time span=5m
+| stats count as failures dc(Computer) as hosts dc(IpAddress) as source_ips by Account _time
+| where failures >= 10
+| sort - failures

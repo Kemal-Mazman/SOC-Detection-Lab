@@ -2,100 +2,201 @@
 
 Dual-SIEM detection: the same logic implemented in Splunk SPL and Microsoft KQL,
 mapped to the same ATT&CK technique and validated against the same test data.
-This is the **workflow-proving** detection — it establishes the repository format,
-the field-mapping process, and the ADX test harness before the ClickFix case study.
+
+This is the **workflow-proving** detection. It establishes the repository format,
+field-mapping process, and ADX test harness before the ClickFix case study.
 
 ---
 
 ## Detection objective
 
 Flag any single account that accumulates **≥ 10 failed logons within a 5-minute
-window**, indicating interactive/service-account password guessing or brute force
-against one target — as distinct from a slow "low-and-slow" attempt that stays
-under the per-window threshold.
+window**, indicating possible password guessing or brute-force activity against
+one target.
+
+This is distinct from a slow, low-volume attempt that remains below the
+per-window threshold.
 
 ## Data source
 
-| | |
+| Platform | Data source |
 |---|---|
-| Event | Windows Security **Event ID 4625** (An account failed to log on) |
-| Splunk | `WinEventLog:Security` via the Splunk Add-on for Microsoft Windows |
-| Sentinel | `SecurityEvent` table (Windows Security Events connector, AMA) |
-| Test substrate | ADX free-cluster mirror table (see `test-data/adx-setup.kql`) |
+| Event | Windows Security **Event ID 4625** — an account failed to log on |
+| Splunk | `WinEventLog:Security` using normalised Windows Security log fields |
+| Sentinel | `SecurityEvent` table through the Windows Security Events connector |
+| Test substrate | Azure Data Explorer mirror table created using `test-data/adx-setup.kql` |
 
 ## MITRE ATT&CK mapping
 
 | Technique | ID | Notes |
 |---|---|---|
-| Brute Force: Password Guessing | **T1110.001** | Primary — many attempts against one account |
-| Brute Force: Password Spraying | T1110.003 | *Adjacent* — invert the detection to `summarize dcount(Account) by IpAddress, bin(...)` to catch one password across many accounts |
+| Brute Force: Password Guessing | **T1110.001** | Primary mapping — many attempts against one account |
+| Brute Force: Password Spraying | T1110.003 | Adjacent technique; a spraying detection would count distinct targeted accounts by source IP |
 
 ## SPL query
 
-See [`detection.spl`](./detection.spl).
+The production-style Splunk query is available in:
+
+[`detection.spl`](./detection.spl)
+
+It targets normalised Windows Security log fields such as `EventCode`, `user`,
+`host`, and `src_ip`.
+
+The exact query tested against the uploaded CSV is available in:
+
+[`test-data/detection-test.spl`](./test-data/detection-test.spl)
 
 ## KQL query
 
-See [`detection.kql`](./detection.kql). Runs unchanged in Sentinel and in the
-ADX mirror table.
+The KQL detection is available in:
+
+[`detection.kql`](./detection.kql)
+
+It was tested in Azure Data Explorer using a `SecurityEvent`-compatible mirror
+table and is intended for Microsoft Sentinel's documented `SecurityEvent` schema.
 
 ## Field mapping
 
-See [`field-mapping.md`](./field-mapping.md) for the full Splunk → Sentinel → ADX
-column crosswalk and the schema-on-read vs schema-on-write notes.
+See [`field-mapping.md`](./field-mapping.md) for the Splunk, Sentinel, and ADX
+field crosswalk, including the difference between Splunk's schema-on-read model
+and KQL's fixed table schema.
 
 ## Testing method
 
-The dataset in `test-data/sample-4625-events.csv` contains 30 synthetic 4625
-events across three accounts, designed so exactly one should fire:
+The dataset in `test-data/sample-4625-events.csv` contains 30 synthetic Windows
+Security Event ID 4625 records across three accounts.
 
-| Account | Pattern | Design intent |
+The data was designed so exactly one account should trigger the detection:
+
+| Account | Pattern | Expected result |
 |---|---|---|
-| `svc_backup` | 12 failures inside 02:00–02:05 | **Should fire** (burst over threshold) |
-| `jsmith` | 3 failures | Should not fire (below threshold) |
-| `admin` | 15 failures spread over 20 min (≤4 per window) | Should **not** fire — proves the 5-minute windowing suppresses a slow drip that a raw total-count rule would wrongly flag |
+| `svc_backup` | 12 failures within one 5-minute window | **Should fire** |
+| `jsmith` | 3 failures | Should not fire |
+| `admin` | 15 failures spread across 20 minutes, with no more than 4 in one window | Should not fire |
 
-**KQL path:** run `test-data/adx-setup.kql` in the ADX free cluster to create the
-`SecurityEvent` mirror table and ingest the sample, then run `detection.kql`.
-**SPL path:** ingest the same CSV into a test index (or generate live 4625s on the
-lab endpoint) and run `detection.spl`.
+The `admin` events are intentionally distributed across multiple windows. This
+tests whether the rule performs time-based burst detection rather than simply
+counting all failures for an account.
+
+### KQL test path
+
+1. Create the `SecurityEvent` mirror table in Azure Data Explorer.
+2. Ingest the sample events using `test-data/adx-setup.kql`.
+3. Run `detection.kql`.
+4. Remove the threshold filter to review the individual 5-minute windows.
+
+### SPL test path
+
+1. Upload `sample-4625-events.csv` into the Splunk index
+   `detection_lab_test`.
+2. Run `test-data/detection-test.spl`.
+3. Run the window-breakdown query without the threshold filter.
+4. Compare the result with the KQL output.
+
+The production-style `detection.spl` was not tested directly against the CSV
+because the CSV uses Sentinel-style field names rather than normalised Splunk
+Windows-event fields.
 
 ## Results
 
-Verified against the sample data:
+Both tested implementations returned the same detection result:
 
-| Account | 5-min window | Failures | SPL | KQL (ADX) | Expected |
-|---|---|---|---|---|---|
+| Account | 5-minute window | Failures | SPL test | KQL test | Expected |
+|---|---|---:|---|---|---|
 | `svc_backup` | 02:00 | 12 | Fires | Fires | **Fires** |
-| `admin` | any single window | ≤ 4 | Suppressed | Suppressed | Suppressed |
+| `admin` | Any single window | ≤ 4 | Suppressed | Suppressed | Suppressed |
 | `jsmith` | 02:00 | 3 | Suppressed | Suppressed | Suppressed |
 
-Both implementations return the identical single result row (`svc_backup`,
-`failures = 12`), confirming logic equivalence across the two schemas.
+Only `svc_backup` exceeded the threshold, producing one result row with
+`failures = 12`.
+
+The `admin` account had more than 10 failures overall, but the events were split
+across four separate 5-minute windows. No individual window reached the
+threshold.
+
+## Evidence
+
+### KQL detection result
+
+Only `svc_backup` exceeded the threshold, with 12 failures in one 5-minute
+window.
+
+![KQL detection result](./screenshots/kql-detection-result.png)
+
+### KQL window breakdown
+
+The `admin` failures were distributed across four separate windows, so the
+account remained below the threshold.
+
+![KQL window breakdown](./screenshots/kql-window-breakdown.png)
+
+### SPL detection result
+
+The equivalent SPL test query also returned only `svc_backup`.
+
+![SPL detection result](./screenshots/spl-detection-result.png)
+
+### SPL window breakdown
+
+The SPL results confirm the same 5-minute grouping behaviour.
+
+![SPL window breakdown](./screenshots/spl-window-breakdown.png)
+
+## SPL and KQL equivalence
+
+The two implementations express the same detection logic using different
+operators and field names:
+
+| Detection step | SPL | KQL |
+|---|---|---|
+| Select failed logons | `EventID=4625` or `EventCode=4625` | `where EventID == 4625` |
+| Create 5-minute windows | `bin _time span=5m` | `bin(TimeGenerated, 5m)` |
+| Count by account and window | `stats count by Account _time` | `summarize count() by Account, bin(...)` |
+| Apply threshold | `where failures >= 10` | `where failures >= 10` |
+| Sort highest first | `sort - failures` | `order by failures desc` |
+
+This demonstrates that the detection meaning was preserved while adapting to
+the different schemas and query languages.
 
 ## False positives
 
-- **Service / batch accounts** with expired cached credentials can generate
-  bursts of 4625 (LogonType 3/5) — tune by excluding known service accounts or
-  raising the threshold for them specifically.
-- **Password rotation events** (a user updating a password across mapped drives,
-  mobile clients, saved sessions) can briefly spike.
-- **Vulnerability scanners / NAC health checks** authenticating on a schedule.
+Potential false positives include:
+
+- Service or batch accounts repeatedly attempting authentication with expired
+  cached credentials.
+- Password rotation causing mapped drives, services, mobile clients, or saved
+  sessions to retry an old password.
+- Vulnerability scanners, network-access-control systems, or health-check tools
+  performing repeated authentication attempts.
+- Users repeatedly entering an incorrect password over a short period.
+
+Possible tuning options include:
+
+- Using different thresholds for service accounts.
+- Prioritising specific logon types.
+- Excluding documented scanner or automation source addresses.
+- Correlating the failures with a later successful login.
 
 ## Limitations
 
-- Threshold/window are static; a patient attacker pacing under 10/5-min evades it.
-  Pair with a longer-window low-volume companion rule for full coverage.
-- 4625 alone does not confirm compromise — a **subsequent 4624 (success)** for the
-  same account is the escalation signal and should be a follow-on correlation.
-- LogonType is captured but not yet used to prioritise (Type 10 RDP vs Type 3
-  network should score differently).
+- The threshold and 5-minute window are static.
+- An attacker pacing attempts below 10 failures per window may evade the rule.
+- Event ID 4625 alone does not confirm account compromise.
+- The rule does not currently distinguish risk using `LogonType`.
+- A successful Event ID 4624 after the failed attempts is not yet correlated.
+- The ADX test table contains only the fields needed for this detection and is
+  not a complete production Sentinel table.
+- The production-style SPL query still needs testing against live,
+  normalised Windows Security events from the lab.
+
+A longer-window, lower-volume companion detection would improve coverage for
+slow password-guessing activity.
 
 ## Tested vs schema-validated status
 
 | Implementation | Status |
 |---|---|
-| SPL (`detection.spl`) | **Tested** against sample 4625 events |
-| KQL (`detection.kql`) | **Tested** in Azure Data Explorer using an `Event`-compatible `SecurityEvent` mirror table populated with the sample events. Production Sentinel table mapping validated separately from Microsoft's documented `SecurityEvent` schema. |
-
-*Screenshots of both firing go in `screenshots/`.*
+| SPL test query (`test-data/detection-test.spl`) | **Tested** in Splunk against the 30 synthetic Event ID 4625 records |
+| SPL production query (`detection.spl`) | **Schema-validated** for normalised Windows Security log fields; not tested against the CSV because the field names differ |
+| KQL (`detection.kql`) | **Tested** in Azure Data Explorer using a `SecurityEvent`-compatible mirror table populated with the sample events |
+| Production Sentinel deployment | **Not deployed**; mapping was prepared for the documented `SecurityEvent` schema |

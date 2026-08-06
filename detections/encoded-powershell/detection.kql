@@ -1,0 +1,6 @@
+SysmonProcessEvents
+| where Image endswith @"\powershell.exe"
+| where CommandLine contains "EncodedCommand"
+| extend DetectionReason = "Encoded PowerShell command"
+| project TimeGenerated, Host, Image, ParentImage, CommandLine, DetectionReason
+| order by TimeGenerated desc

@@ -1,0 +1,5 @@
+index=main source="WinEventLog:Microsoft-Windows-Sysmon/Operational" "EncodedCommand"
+| search Image="*powershell.exe"
+| eval detection_reason="Encoded PowerShell command"
+| table _time host Image ParentImage CommandLine detection_reason
+| sort - _time

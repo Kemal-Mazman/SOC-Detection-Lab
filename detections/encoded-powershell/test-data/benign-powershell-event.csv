@@ -1,0 +1,2 @@
+"_time",host,EventID,ProcessGuid,ProcessId,Image,ParentImage,CommandLine
+"2026-08-06T03:41:36.165+0000","DESKTOP-5BL4PPV",,"{46d541ea-0270-6a74-cb04-000000001500}",2492,"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe","C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe","""C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"" -NoProfile -Command ""Write-Output 'BENIGN-PS-TEST'"""

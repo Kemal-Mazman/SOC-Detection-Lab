@@ -24,12 +24,12 @@ The lab is designed to simulate a simplified enterprise-style SOC environment wh
 
 ## Current Portfolio Status
 
-* **Completed detections:** 9
+* **Completed detections:** 10
 * **Flagship work:** Benign-baseline generation and behavioural false-positive tuning
-* **Latest detection work:** ClickFix PowerShell execution and RunMRU registry evidence
+* **Latest detection:** Defender Exclusion Added → Execution From Excluded Path (KQL, with automated suppression testing)
 * **Detection engineering improvement:** Generalised local-account extraction with no hardcoded usernames
-* **Primary tools:** Splunk Enterprise, Sysmon, Windows Security Logs, Splunk Universal Forwarder
-* **Lab focus:** Detection engineering, attack simulation, log analysis, false-positive tuning, and attack-chain correlation
+* **Primary tools:** Splunk Enterprise, Azure Data Explorer (KQL), Sysmon, Windows Security Logs, Microsoft Defender operational logs, Splunk Universal Forwarder
+* **Lab focus:** Detection engineering, attack simulation, log analysis, false-positive tuning, detection validation, and attack-chain correlation
 
 ## Lab Architecture
 
@@ -41,32 +41,55 @@ The lab is built using:
 * **Splunk Universal Forwarder** for log forwarding
 * **Sysmon** for detailed Windows process and system telemetry
 * **Kali Linux VM** for controlled attack simulation
+* **Azure Data Explorer** as a KQL analytics substrate for detections written in KQL
 
 ## Data Flow
 
 1. Attack or test activity is generated against the Windows endpoint.
-2. Windows Security logs and Sysmon logs are generated.
-3. The Splunk Universal Forwarder sends logs to Splunk Enterprise.
-4. Splunk is used for searching, detection development, validation, and investigation.
-5. Detection logic and screenshots are documented in GitHub.
+2. Windows Security logs, Sysmon logs and Microsoft Defender operational logs are generated.
+3. The Splunk Universal Forwarder sends logs to Splunk Enterprise; selected telemetry is also ingested into Azure Data Explorer for KQL detection development.
+4. Splunk or Azure Data Explorer is used for searching, detection development, validation, and investigation.
+5. Detection logic, validation results and screenshots are documented in GitHub.
 
 ## Detection Coverage
 
-| Detection                                                                                                         | MITRE ATT&CK                                                          | Status   |
-| ----------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- | -------- |
-| [Encoded PowerShell Execution](detections/powershell_encoded_command_detection.md)                                | T1059.001, T1027                                                      | Complete |
-| [Multiple Failed Windows Logins](detections/failed_logon_detection.md)                                            | T1110                                                                 | Complete |
-| [Scheduled Task Creation](detections/T1053.005_Scheduled_Task_Creation.md)                                        | T1053.005                                                             | Complete |
-| [Registry Run Key Modification](detections/registry_run_key_detection.md)                                         | T1547.001                                                             | Complete |
-| [Windows Discovery Command Sequence](detections/discovery_command_sequence_detection.md)                          | T1033, T1082, T1016, T1087, T1069                                     | Complete |
-| [Local Account Creation and Admin Group Modification](detections/local_account_creation_admin_group_detection.md) | T1136.001, T1098, T1078                                               | Complete |
-| [Local Account Admin + RDP Attack Chain](detections/local_account_admin_rdp_attack_chain_detection.md)            | T1033, T1082, T1016, T1087, T1069, T1136.001, T1098, T1078, T1021.001 | Complete |
-| [ClickFix PowerShell — Run Dialog and Windows Terminal](detections/clickfix_powershell_lineage_detection.md)      | T1204.004, T1059.001                                                  | Complete |
-| [RunMRU Interpreter Abuse](detections/runmru_interpreter_abuse_detection.md)                                      | T1204.004                                                             | Complete |
+| Detection                                                                                                         | MITRE ATT&CK                                                          | Platform   | Status   |
+| ----------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- | ---------- | -------- |
+| [Encoded PowerShell Execution](detections/powershell_encoded_command_detection.md)                                | T1059.001, T1027                                                      | Splunk SPL | Complete |
+| [Multiple Failed Windows Logins](detections/failed_logon_detection.md)                                            | T1110                                                                 | Splunk SPL | Complete |
+| [Scheduled Task Creation](detections/T1053.005_Scheduled_Task_Creation.md)                                        | T1053.005                                                             | Splunk SPL | Complete |
+| [Registry Run Key Modification](detections/registry_run_key_detection.md)                                         | T1547.001                                                             | Splunk SPL | Complete |
+| [Windows Discovery Command Sequence](detections/discovery_command_sequence_detection.md)                          | T1033, T1082, T1016, T1087, T1069                                     | Splunk SPL | Complete |
+| [Local Account Creation and Admin Group Modification](detections/local_account_creation_admin_group_detection.md) | T1136.001, T1098, T1078                                               | Splunk SPL | Complete |
+| [Local Account Admin + RDP Attack Chain](detections/local_account_admin_rdp_attack_chain_detection.md)            | T1033, T1082, T1016, T1087, T1069, T1136.001, T1098, T1078, T1021.001 | Splunk SPL | Complete |
+| [ClickFix PowerShell — Run Dialog and Windows Terminal](detections/clickfix_powershell_lineage_detection.md)      | T1204.004, T1059.001                                                  | Splunk SPL | Complete |
+| [RunMRU Interpreter Abuse](detections/runmru_interpreter_abuse_detection.md)                                      | T1204.004                                                             | Splunk SPL | Complete |
+| [Defender Exclusion Added → Execution From Excluded Path](detections/defender_exclusion_then_execution_detection.md) | T1562.001, T1204.002                                              | KQL        | Complete |
 
-## Latest Detection Work: ClickFix PowerShell and RunMRU Evidence
+## Latest Detection: Defender Exclusion Added → Execution From Excluded Path
 
-The latest additions provide complementary coverage for ClickFix and fake-CAPTCHA paste-and-run activity.
+This is the first detection in the repository written in KQL rather than Splunk SPL, and the first to ship with an automated suppression test suite.
+
+It correlates two events that are individually unremarkable and jointly high-signal:
+
+1. A Microsoft Defender path exclusion being added (Event ID 5007)
+2. A process executing from inside that excluded path (Sysmon Event ID 1), on the same host, within 10 minutes
+
+Neither event alone justifies an alert — administrators and installers add exclusions routinely. The detection targets the sequence: an attacker carving out a blind spot and then immediately using it.
+
+**Stateful sequence matching.** Correlation uses the KQL `scan` operator with a per-entity partition key rather than a join. A join produces a cross product of every exclusion against every execution and then filters it, which does not express "the next execution after this exclusion".
+
+**Adversarial self-testing.** The detection ships with an automated validation matrix of eight scenarios, six of which assert that it stays *silent* — wrong host, wrong event order, outside the correlation window, path-boundary near-miss, and each event occurring alone. Scenario `08_multi_exclusion` was written to attack the detection's own state model, and it failed on the first attempt: partitioning on host alone meant a second exclusion overwrote the first in `scan` state, so an attacker adding two exclusions and executing from the first was missed. The partition key was changed to host + path as a result.
+
+The test payload is a copy of a signed Microsoft binary (`whoami.exe`), so the detection is demonstrably firing on the sequence rather than on any property of the executable.
+
+Runnable queries: [detection](detections/kql/defender_exclusion_then_execution_detection.kql) · [validation matrix](detections/kql/defender_exclusion_validation_matrix.kql) · [normalization tests](detections/kql/defender_exclusion_path_normalization_tests.kql)
+
+Full write-up, including known limitations: [detections/defender_exclusion_then_execution_detection.md](detections/defender_exclusion_then_execution_detection.md)
+
+## ClickFix PowerShell and RunMRU Evidence
+
+These two detections provide complementary coverage for ClickFix and fake-CAPTCHA paste-and-run activity.
 
 ### ClickFix PowerShell Execution
 
@@ -144,16 +167,17 @@ Validation across a 30-day window produced:
 * **Different account names:** 3
 * **Hardcoded account values:** 0
 
-This improvement demonstrates detection validation and generalisation rather than adding a separate tenth detection.
+This improvement demonstrates detection validation and generalisation rather than adding a separate detection.
 
 ## Current Focus Areas
 
 * Windows authentication logging and event analysis
 * Sysmon process creation analysis
-* Splunk SPL detection query development
-* Log ingestion and parsing
+* Detection query development in Splunk SPL and KQL
+* Log ingestion, parsing and field normalization
 * Alert logic tuning and false-positive reduction
-* Attack-chain correlation
+* Attack-chain and stateful sequence correlation
+* Automated detection validation and suppression testing
 * Basic incident investigation workflows
 * Technical documentation of findings and validation steps
 
@@ -171,8 +195,10 @@ This lab currently covers scenarios such as:
 * Detecting ClickFix-style PowerShell execution through the Run dialog
 * Detecting the Windows Terminal ClickFix delivery variant through process ancestry
 * Detecting RunMRU registry evidence of command-interpreter use
+* Correlating Defender configuration changes with subsequent process execution
 * Generating benign activity to measure false positives
 * Tuning detection severity using behavioural context rather than hardcoded exclusions
+* Writing automated test matrices that assert where a detection should *not* fire
 
 ## Repository Structure
 
@@ -181,13 +207,15 @@ SOC-Detection-Lab/
 ├── architecture/
 │   └── SOC lab architecture diagrams
 ├── detections/
-│   └── Detection documentation and SPL queries
+│   ├── Detection documentation and SPL queries
+│   └── kql/
+│       └── Standalone, runnable KQL detection and validation queries
 ├── investigations/
 │   └── Investigation notes and analysis summaries
 ├── logs/
 │   └── Sample log notes or exported analysis artifacts
 ├── screenshots/
-│   └── Splunk validation screenshots and lab evidence
+│   └── Splunk and KQL validation screenshots and lab evidence
 ├── tools/
 │   └── Benign activity generation and lab automation scripts
 └── README.md
@@ -201,11 +229,14 @@ Each detection is documented with:
 * Scenario description
 * MITRE ATT&CK mapping
 * Data sources
+* Lab environment and software versions
 * Attack simulation steps
-* Splunk SPL query
+* Detection query (Splunk SPL or KQL)
+* Automated validation matrix asserting both firing and suppression behaviour, where applicable
 * Validation screenshots
 * Investigation steps
 * False-positive considerations
+* Known limitations and detection scope boundaries
 * Cleanup steps where required
 
 ## Objective
@@ -216,7 +247,8 @@ The objective of this lab is to build a strong foundation in security operations
 * Learning how to design effective detection logic
 * Building detections mapped to MITRE ATT&CK
 * Practicing structured investigation thinking
-* Improving Splunk SPL skills
+* Improving Splunk SPL and KQL query skills
+* Testing detections against the conditions where they should *not* fire
 * Documenting technical work clearly for portfolio review
 
 ## Notes

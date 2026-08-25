@@ -1,0 +1,30 @@
+// =====================================================================
+// Normalization Tests : Defender 5007 exclusion path extraction
+// Purpose : assert the extract + tolower + trim_end + strcat chain turns a
+//           raw registry-style 5007 NewValue string into a canonical,
+//           lowercase, single-trailing-backslash path.
+// Result  : 5/5 PASS
+// =====================================================================
+// WHY THIS IS A SEPARATE FILE
+// A case-sensitivity test placed inside the correlation matrix could not
+// fail: the correlation compares already-normalized values, so removing
+// tolower() from the pipeline would not turn it red. A test that cannot fail
+// is not evidence. These tests run against the RAW 5007 string, so N01 does
+// go red if tolower() is removed.
+// =====================================================================
+// KWE splits query blocks on blank lines. Select all (Ctrl+A), Shift+Enter.
+// =====================================================================
+let NormalizationTests = datatable(TestCase:string, NewValue:string, ExpectedPath:string)
+[
+    "N01_uppercase",     @"HKLM\SOFTWARE\Microsoft\Windows Defender\Exclusions\Paths\C:\LAB\Excluded = 0x0",             @"c:\lab\excluded\",
+    "N02_trailing_bs",   @"HKLM\SOFTWARE\Microsoft\Windows Defender\Exclusions\Paths\C:\lab\excluded\ = 0x0",            @"c:\lab\excluded\",
+    "N03_double_bs",     @"HKLM\SOFTWARE\Microsoft\Windows Defender\Exclusions\Paths\C:\lab\excluded\\ = 0x0",           @"c:\lab\excluded\",
+    "N04_spaces",        @"HKLM\SOFTWARE\Microsoft\Windows Defender\Exclusions\Paths\C:\Program Files\Vendor App = 0x0", @"c:\program files\vendor app\",
+    "N05_mixed_case_bs", @"HKLM\SOFTWARE\Microsoft\Windows Defender\Exclusions\Paths\C:\LAB\Excluded\\ = 0x0",           @"c:\lab\excluded\"
+];
+NormalizationTests
+| extend Extracted = extract(@"Exclusions\\Paths\\(.+?)\s*=\s*0x0$", 1, NewValue)
+| extend ActualPath = strcat(trim_end(@"[\\]+", tolower(Extracted)), @"\")
+| extend TestResult = iff(ActualPath == ExpectedPath, "PASS", "FAIL")
+| project TestCase, ActualPath, ExpectedPath, TestResult
+| order by TestCase asc

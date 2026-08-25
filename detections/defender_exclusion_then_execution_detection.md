@@ -1,8 +1,7 @@
-[defender_exclusion_then_execution_detection (1).md](https://github.com/user-attachments/files/31422118/defender_exclusion_then_execution_detection.1.md)
 # Defender Exclusion Added → Execution From Excluded Path
 
-**MITRE ATT&CK:** T1562.001 (Impair Defenses: Disable or Modify Tools), T1204.002 (User Execution: Malicious File)
-**Platform:** Azure Data Explorer (KQL)
+**MITRE ATT&CK:** T1562.001 (Impair Defenses: Disable or Modify Tools), T1204.002 (User Execution: Malicious File)  
+**Platform:** Azure Data Explorer (KQL)  
 **Status:** Complete
 
 ---

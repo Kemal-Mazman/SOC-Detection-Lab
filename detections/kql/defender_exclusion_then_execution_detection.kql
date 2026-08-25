@@ -1,0 +1,92 @@
+// =====================================================================
+// Detection : Defender Exclusion Added -> Execution From Excluded Path
+// ATT&CK    : T1562.001 (Impair Defenses: Disable or Modify Tools)
+//             T1204.002 (User Execution: Malicious File)
+// Platform  : Azure Data Explorer / KQL
+// Author    : Kemal Mazman
+// =====================================================================
+//
+// RATIONALE
+// A Defender path exclusion being added is not, on its own, suspicious --
+// administrators and installers add them routinely. A binary executing from
+// a directory is not, on its own, suspicious either. The pairing carries the
+// signal: an exclusion added, followed within a short window by execution
+// from inside that path, on the same host.
+//
+// CORRELATION MODEL
+// Stateful sequence matching via `scan`, not `join`. A join produces a cross
+// product of every exclusion against every execution and then filters it,
+// which does not express "the next execution after this exclusion". `scan`
+// walks the stream in time order and holds per-partition state.
+//
+// PARTITION KEY: Host + CorrelationPath
+// `scan` step state holds only the most recent match. Partitioning on Host
+// alone means a second exclusion overwrites the first, so an attacker who
+// adds two exclusions and executes from the first is missed. Partitioning on
+// Host + path gives each exclusion an independent state machine.
+// Validated by scenario 08_multi_exclusion in the validation matrix.
+//
+// RECURSIVE MATCHING
+// Defender path exclusions are recursive: excluding c:\lab\excluded\ also
+// excludes c:\lab\excluded\sub\. Because the partition key makes matching an
+// equality test, each execution is expanded into one candidate row per
+// ancestor directory. The candidate matching a real exclusion lands in that
+// partition and fires; the rest sit in partitions with no exclusion and
+// produce nothing.
+// Validated against real telemetry: exclusion on c:\lab\excluded\ correctly
+// detected execution of c:\lab\excluded\sub\labtest.exe.
+//
+// KUSTO WEB EXPLORER NOTE
+// KWE splits the editor into query blocks on blank lines, including blank
+// lines inside brackets. Select all (Ctrl+A) and run with Shift+Enter.
+// This file contains no blank lines.
+// =====================================================================
+let LookbackWindow = 24h;
+let CorrelationWindow = 10m;
+let Exclusions =
+    DefenderConfigEvents
+    | where TimeGenerated > ago(LookbackWindow)
+    | where EventID == 5007
+    | distinct TimeGenerated, Host, EventID, OldValue, NewValue
+    | extend ExcludedPath = extract(@"Exclusions\\Paths\\(.+?)\s*=\s*0x0$", 1, NewValue)
+    | where isnotempty(ExcludedPath)
+    | extend CorrelationPath = strcat(trim_end(@"[\\]+", tolower(ExcludedPath)), @"\")
+    | project TimeGenerated, Host, EventType = "ExclusionAdded", CorrelationPath, ProcessImage = "";
+let Executions =
+    SysmonProcessEvents
+    | where TimeGenerated > ago(LookbackWindow)
+    | where EventID == 1
+    | distinct TimeGenerated, Host, EventID, ProcessGuid, ProcessId, Image, ParentImage, CommandLine
+    | extend ProcessImage = tolower(Image)
+    | extend PathParts = split(ProcessImage, @"\")
+    | extend Depths = range(0, array_length(PathParts) - 2, 1)
+    | mv-expand Depths to typeof(int)
+    | extend CorrelationPath = strcat(strcat_array(array_slice(PathParts, 0, Depths), @"\"), @"\")
+    | project TimeGenerated, Host, EventType = "ProcessExecution", CorrelationPath, ProcessImage;
+union Exclusions, Executions
+| extend PartitionKey = strcat(Host, "|", CorrelationPath)
+| partition hint.strategy=native by PartitionKey (
+    sort by TimeGenerated asc
+    | scan declare (ExclusionTime: datetime) with (
+        step exclusion output=none: EventType == "ExclusionAdded" => ExclusionTime = TimeGenerated;
+        step execution output=all: EventType == "ProcessExecution" and TimeGenerated - exclusion.ExclusionTime <= CorrelationWindow => ExclusionTime = exclusion.ExclusionTime;
+    )
+)
+| project
+    Host,
+    ExclusionTime,
+    ExecutionTime = TimeGenerated,
+    TimeDifference = TimeGenerated - ExclusionTime,
+    MatchedExcludedPath = CorrelationPath,
+    ProcessImage
+| order by ExecutionTime asc
+// ---------------------------------------------------------------------
+// NOT YET TESTED, left out deliberately:
+// If a host has nested exclusions (e.g. both c:\lab\ and c:\lab\excluded\),
+// a single execution can match more than one and emit one row per match.
+// Deduplicating to the earliest exclusion would look like:
+//   | summarize arg_min(ExclusionTime, CorrelationPath)
+//       by Host, ProcessImage, ExecutionTime = TimeGenerated
+// This case was never produced in the lab, so it is not part of the
+// validated query.
+// ---------------------------------------------------------------------

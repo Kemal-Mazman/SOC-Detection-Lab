@@ -1,0 +1,89 @@
+// =====================================================================
+// Validation Matrix : Defender Exclusion -> Execution detection
+// Purpose : prove the detection fires when it should AND stays silent when
+//           it should not. Eight scenarios, expected result asserted per
+//           scenario, PASS/FAIL computed automatically.
+// Result  : 8/8 PASS
+// =====================================================================
+// HARNESS DESIGN
+// Scenario is included in the partition key so each synthetic scenario is
+// evaluated independently and cannot inherit scan state from the scenario
+// before it. This is test isolation. The production detection has no
+// Scenario field and partitions on Host + CorrelationPath only.
+//
+// The exclusion and execution branches are kept separate and unioned, exactly
+// as in production. Ancestor expansion must only touch execution rows:
+// exclusion rows carry an empty ProcessImage, and mv-expand over an empty
+// array DROPS the row rather than preserving it.
+//
+// KWE splits query blocks on blank lines. Select all (Ctrl+A), Shift+Enter.
+// =====================================================================
+let TestEvents = datatable(Scenario:string, TimeGenerated:datetime, Host:string, EventType:string, ExcludedPath:string, ProcessImage:string)
+[
+    // 01 - true positive: exclusion then execution from that path, same host, inside window
+    "01_positive",        datetime(2026-08-25T10:00:00Z), "DEVICE-A", "ExclusionAdded",   @"c:\lab\excluded\", "",
+    "01_positive",        datetime(2026-08-25T10:00:05Z), "DEVICE-A", "ProcessExecution", "",                  @"c:\lab\excluded\labtest.exe",
+    // 02 - path boundary: excludedother must not match excluded
+    "02_path_boundary",   datetime(2026-08-25T10:10:00Z), "DEVICE-A", "ExclusionAdded",   @"c:\lab\excluded\", "",
+    "02_path_boundary",   datetime(2026-08-25T10:10:05Z), "DEVICE-A", "ProcessExecution", "",                  @"c:\lab\excludedother\test.exe",
+    // 03 - exclusion and execution on different hosts
+    "03_wrong_host",      datetime(2026-08-25T10:20:00Z), "DEVICE-A", "ExclusionAdded",   @"c:\lab\excluded\", "",
+    "03_wrong_host",      datetime(2026-08-25T10:20:05Z), "DEVICE-B", "ProcessExecution", "",                  @"c:\lab\excluded\labtest.exe",
+    // 04 - execution precedes the exclusion
+    "04_wrong_order",     datetime(2026-08-25T10:30:00Z), "DEVICE-A", "ProcessExecution", "",                  @"c:\lab\excluded\labtest.exe",
+    "04_wrong_order",     datetime(2026-08-25T10:30:05Z), "DEVICE-A", "ExclusionAdded",   @"c:\lab\excluded\", "",
+    // 05 - execution 10m01s after exclusion, just outside the window
+    "05_outside_window",  datetime(2026-08-25T10:40:00Z), "DEVICE-A", "ExclusionAdded",   @"c:\lab\excluded\", "",
+    "05_outside_window",  datetime(2026-08-25T10:50:01Z), "DEVICE-A", "ProcessExecution", "",                  @"c:\lab\excluded\labtest.exe",
+    // 06 - exclusion with no subsequent execution
+    "06_exclusion_only",  datetime(2026-08-25T11:00:00Z), "DEVICE-A", "ExclusionAdded",   @"c:\lab\excluded\", "",
+    // 07 - execution with no preceding exclusion
+    "07_execution_only",  datetime(2026-08-25T11:10:00Z), "DEVICE-A", "ProcessExecution", "",                  @"c:\lab\excluded\labtest.exe",
+    // 08 - two exclusions then execution from the FIRST; fails if scan state is keyed on Host alone
+    "08_multi_exclusion", datetime(2026-08-25T11:20:00Z), "DEVICE-A", "ExclusionAdded",   @"c:\lab\alpha\",    "",
+    "08_multi_exclusion", datetime(2026-08-25T11:20:02Z), "DEVICE-A", "ExclusionAdded",   @"c:\lab\beta\",     "",
+    "08_multi_exclusion", datetime(2026-08-25T11:20:05Z), "DEVICE-A", "ProcessExecution", "",                  @"c:\lab\alpha\labtest.exe"
+];
+let Expected = datatable(Scenario:string, ExpectedResult:string)
+[
+    "01_positive",        "FIRE",
+    "02_path_boundary",   "SUPPRESS",
+    "03_wrong_host",      "SUPPRESS",
+    "04_wrong_order",     "SUPPRESS",
+    "05_outside_window",  "SUPPRESS",
+    "06_exclusion_only",  "SUPPRESS",
+    "07_execution_only",  "SUPPRESS",
+    "08_multi_exclusion", "FIRE"
+];
+let TestExclusions =
+    TestEvents
+    | where EventType == "ExclusionAdded"
+    | extend CorrelationPath = strcat(trim_end(@"[\\]+", tolower(ExcludedPath)), @"\")
+    | project Scenario, TimeGenerated, Host, EventType, CorrelationPath, ProcessImage = "";
+let TestExecutions =
+    TestEvents
+    | where EventType == "ProcessExecution"
+    | extend ProcessImage = tolower(ProcessImage)
+    | extend PathParts = split(ProcessImage, @"\")
+    | extend Depths = range(0, array_length(PathParts) - 2, 1)
+    | mv-expand Depths to typeof(int)
+    | extend CorrelationPath = strcat(strcat_array(array_slice(PathParts, 0, Depths), @"\"), @"\")
+    | project Scenario, TimeGenerated, Host, EventType, CorrelationPath, ProcessImage;
+let Detected =
+    union TestExclusions, TestExecutions
+    | extend PartitionKey = strcat(Scenario, "|", Host, "|", CorrelationPath)
+    | partition hint.strategy=native by PartitionKey (
+        sort by TimeGenerated asc
+        | scan declare (ExclusionTime: datetime) with (
+            step exclusion output=none: EventType == "ExclusionAdded" => ExclusionTime = TimeGenerated;
+            step execution output=all: EventType == "ProcessExecution" and TimeGenerated - exclusion.ExclusionTime <= 10m => ExclusionTime = exclusion.ExclusionTime;
+        )
+    )
+    | summarize DetectedCount = count() by Scenario;
+Expected
+| join kind=leftouter Detected on Scenario
+| extend DetectedCount = coalesce(DetectedCount, 0)
+| extend ActualResult = iff(DetectedCount > 0, "FIRE", "SUPPRESS")
+| extend TestResult = iff(ExpectedResult == ActualResult, "PASS", "FAIL")
+| project Scenario, ExpectedResult, ActualResult, TestResult
+| order by Scenario asc

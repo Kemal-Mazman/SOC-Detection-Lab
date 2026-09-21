@@ -1,0 +1,38 @@
+let sprayThreshold = 8;
+let spray =
+    SigninLogs
+    | where TimeGenerated > ago(1h)
+    | where ResultType == "50126"
+    | summarize
+        FailedAccounts = dcount(UserPrincipalName),
+        Targeted = make_set(UserPrincipalName),
+        FirstFail = min(TimeGenerated),
+        LastFail = max(TimeGenerated)
+        by IPAddress
+    | where FailedAccounts >= sprayThreshold;
+
+let success =
+    SigninLogs
+    | where TimeGenerated > ago(1h)
+    | where ResultType == "0"
+    | project
+        SuccessTime = TimeGenerated,
+        IPAddress,
+        Account = UserPrincipalName,
+        AppDisplayName,
+        Location;
+
+spray
+| join kind=inner success on IPAddress
+| where set_has_element(Targeted, Account)
+| where SuccessTime between (FirstFail .. LastFail + 15m)
+| project
+    IPAddress,
+    FailedAccounts,
+    Targeted,
+    Account,
+    FirstFail,
+    LastFail,
+    SuccessTime,
+    AppDisplayName,
+    Location

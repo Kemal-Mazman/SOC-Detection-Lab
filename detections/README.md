@@ -12,3 +12,4 @@
 | [ClickFix PowerShell (Run Dialog + Windows Terminal Variant)](clickfix_powershell_lineage_detection.md) | T1204.004, T1059.001                                                  | Splunk SPL | Complete |
 | [RunMRU Interpreter Abuse](runmru_interpreter_abuse_detection.md)                                      | T1204.004                                                             | Splunk SPL | Complete |
 | [Defender Exclusion Added → Execution From Excluded Path](defender_exclusion_then_execution_detection.md) | T1562.001, T1204.002                                                | KQL        | Complete |
+| [Entra ID Password Spray Followed by Successful Sign-In](entra-password-spray-success/README.md) | T1110.003, T1078.004 | KQL | Complete |

@@ -1,0 +1,78 @@
+let SigninLogs = datatable(
+    TimeGenerated:datetime,
+    UserPrincipalName:string,
+    IPAddress:string,
+    ResultType:string,
+    AppDisplayName:string,
+    Location:string
+)
+[
+    // --- password spray from one attacker IP: 8 distinct accounts ---
+    datetime(2026-09-21T02:00:00Z), "user1@contoso.com", "203.0.113.45", "50126", "Office 365", "NL",
+    datetime(2026-09-21T02:01:30Z), "user2@contoso.com", "203.0.113.45", "50126", "Office 365", "NL",
+    datetime(2026-09-21T02:03:00Z), "user3@contoso.com", "203.0.113.45", "50126", "Office 365", "NL",
+    datetime(2026-09-21T02:04:30Z), "user4@contoso.com", "203.0.113.45", "50126", "Office 365", "NL",
+    datetime(2026-09-21T02:06:00Z), "user5@contoso.com", "203.0.113.45", "50126", "Office 365", "NL",
+    datetime(2026-09-21T02:07:30Z), "user6@contoso.com", "203.0.113.45", "50126", "Office 365", "NL",
+    datetime(2026-09-21T02:09:00Z), "user7@contoso.com", "203.0.113.45", "50126", "Office 365", "NL",
+    datetime(2026-09-21T02:10:30Z), "user8@contoso.com", "203.0.113.45", "50126", "Office 365", "NL",
+
+    // --- success from same attacker IP to one sprayed account ---
+    datetime(2026-09-21T02:12:00Z), "user1@contoso.com", "203.0.113.45", "0", "Office 365", "NL",
+
+    // --- benign: one user mistypes password twice then succeeds ---
+    datetime(2026-09-21T09:00:00Z), "employee1@contoso.com", "198.51.100.10", "50126", "Office 365", "AU",
+    datetime(2026-09-21T09:00:20Z), "employee1@contoso.com", "198.51.100.10", "50126", "Office 365", "AU",
+    datetime(2026-09-21T09:00:40Z), "employee1@contoso.com", "198.51.100.10", "0", "Office 365", "AU",
+
+    // --- benign: shared corporate egress, successes only ---
+    datetime(2026-09-21T08:00:00Z), "staff1@contoso.com", "198.51.100.20", "0", "Office 365", "AU",
+    datetime(2026-09-21T08:05:00Z), "staff2@contoso.com", "198.51.100.20", "0", "Office 365", "AU",
+    datetime(2026-09-21T08:10:00Z), "staff3@contoso.com", "198.51.100.20", "0", "Office 365", "AU",
+
+    // --- benign: corporate VPN, 5 staff make genuine password typos ---
+    datetime(2026-09-21T10:00:00Z), "vpnuser1@contoso.com", "198.51.100.30", "50126", "Office 365", "AU",
+    datetime(2026-09-21T10:01:00Z), "vpnuser2@contoso.com", "198.51.100.30", "50126", "Office 365", "AU",
+    datetime(2026-09-21T10:02:00Z), "vpnuser3@contoso.com", "198.51.100.30", "50126", "Office 365", "AU",
+    datetime(2026-09-21T10:03:00Z), "vpnuser4@contoso.com", "198.51.100.30", "50126", "Office 365", "AU",
+    datetime(2026-09-21T10:04:00Z), "vpnuser5@contoso.com", "198.51.100.30", "50126", "Office 365", "AU",
+    datetime(2026-09-21T10:05:00Z), "vpnuser1@contoso.com", "198.51.100.30", "0", "Office 365", "AU"
+];
+
+let sprayThreshold = 8;
+
+let spray =
+    SigninLogs
+    | where ResultType == "50126"
+    | summarize
+        FailedAccounts = dcount(UserPrincipalName),
+        Targeted = make_set(UserPrincipalName),
+        FirstFail = min(TimeGenerated),
+        LastFail = max(TimeGenerated)
+        by IPAddress
+    | where FailedAccounts >= sprayThreshold;
+
+let success =
+    SigninLogs
+    | where ResultType == "0"
+    | project
+        SuccessTime = TimeGenerated,
+        IPAddress,
+        Account = UserPrincipalName,
+        AppDisplayName,
+        Location;
+
+spray
+| join kind=inner success on IPAddress
+| where set_has_element(Targeted, Account)
+| where SuccessTime between (FirstFail .. LastFail + 15m)
+| project
+    IPAddress,
+    FailedAccounts,
+    Targeted,
+    Account,
+    FirstFail,
+    LastFail,
+    SuccessTime,
+    AppDisplayName,
+    Location

@@ -136,8 +136,7 @@ Possible tuning options include:
 
 - Adjusting the distinct-account threshold for the environment.
 - Excluding known trusted corporate egress or VPN IP ranges.
-- Requiring a successful sign-in to one of the targeted accounts.
-- Using additional sign-in context such as application, location, or device information during investigation.
+
 
 ## Limitations
 
@@ -148,6 +147,7 @@ Possible tuning options include:
 - Additional authentication failure codes may provide broader coverage but could also increase false positives.
 - A successful sign-in after the spray increases confidence, but it does not by itself prove malicious account compromise.
 - The detection was tested in Azure Data Explorer using synthetic data and has not been deployed in Microsoft Sentinel.
+- This v1 covers interactive user sign-ins in `SigninLogs`. Non-interactive user sign-ins are logged separately in `AADNonInteractiveUserSignInLogs` and are out of scope for this version.
 
 ## Investigation steps
 

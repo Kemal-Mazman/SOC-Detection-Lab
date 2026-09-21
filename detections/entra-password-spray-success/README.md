@@ -141,7 +141,7 @@ Possible tuning options include:
 ## Limitations
 
 - The threshold of `8` is static and should be tuned for the environment.
-- A slow password spray that targets fewer than eight accounts within the query window may be missed.
+- A spray targeting fewer than 8 distinct accounts within the one-hour query window may be missed, and slower activity spread across a longer period may also evade this rule.
 - Shared corporate VPN or NAT IPs can still create noise in larger environments.
 - The detection currently focuses only on `ResultType == "50126"`.
 - Additional authentication failure codes may provide broader coverage but could also increase false positives.

@@ -485,6 +485,8 @@ Execution beyond the selected 10-minute window will not correlate.
 
 If the retrieved executable is renamed before execution, filename correlation will fail.
 
+The real lab payload also demonstrated that Sysmon preserved `OriginalFileName: WHOAMI.EXE` after `whoami.exe` was renamed to `lab-payload.exe`. Original filename metadata could therefore be explored as an additional correlation signal in a future version, although V1 does not rely on it.
+
 ### Different retrieval utility
 
 The rule is intentionally scoped to Certutil.

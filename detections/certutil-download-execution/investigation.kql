@@ -1,0 +1,42 @@
+// Certutil Download -> Execution
+// Investigation query
+//
+// Purpose:
+// Pivot around a detected device and approximate alert time
+// to review nearby process activity.
+//
+// Update TargetDeviceId and AlertTime before running.
+
+let TargetDeviceId = "<DEVICE_ID>";
+let AlertTime = datetime(2026-09-25 07:28:12);
+let InvestigationWindow = 15m;
+
+DeviceProcessEvents
+| where DeviceId == TargetDeviceId
+| where Timestamp between
+    (AlertTime - InvestigationWindow .. AlertTime + InvestigationWindow)
+| extend ActivityType = case(
+    FileName =~ "certutil.exe"
+        and ProcessCommandLine contains "-urlcache",
+        "Certutil Retrieval",
+
+    FileName =~ "certutil.exe"
+        and ProcessCommandLine contains "-decode",
+        "Certutil Decode",
+
+    FileName endswith ".exe",
+        "Process Execution",
+
+    "Other Process"
+)
+| project
+    Timestamp,
+    DeviceName,
+    AccountName,
+    ActivityType,
+    FileName,
+    FolderPath,
+    ProcessCommandLine,
+    InitiatingProcessFileName,
+    InitiatingProcessCommandLine
+| order by Timestamp asc

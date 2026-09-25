@@ -1,0 +1,74 @@
+// Certutil Download -> Execution
+// ATT&CK: T1105 - Ingress Tool Transfer
+//
+// Detects certutil remote retrieval of an executable followed by
+// execution of the same executable filename on the same endpoint
+// within a configurable correlation window.
+//
+// V1 scope:
+// - executable payloads only
+// - retrieval inferred from process command-line telemetry
+// - filename correlation rather than guaranteed full-path correlation
+
+let CorrelationWindow = 10m;
+
+let CertutilDownloads =
+    DeviceProcessEvents
+    | where FileName =~ "certutil.exe"
+    | where ProcessCommandLine contains "-urlcache"
+    | where ProcessCommandLine contains "http://"
+        or ProcessCommandLine contains "https://"
+    | extend CleanCommandLine = replace_string(ProcessCommandLine, '"', '')
+    | extend DownloadURL =
+        extract(@"(?i)https?://[^\s]+", 0, CleanCommandLine)
+    | extend DownloadedFile =
+        extract(@"(?i)([^\\/\s]+\.exe)\s*$", 1, CleanCommandLine)
+    | where isnotempty(DownloadedFile)
+    | project
+        DeviceId,
+        DeviceName,
+        AccountName,
+        DownloadTime = Timestamp,
+        DownloadCommandLine = ProcessCommandLine,
+        DownloadURL,
+        DownloadedFile,
+        DownloadInitiatingProcess = InitiatingProcessFileName,
+        DownloadInitiatingCommandLine = InitiatingProcessCommandLine;
+
+let Executions =
+    DeviceProcessEvents
+    | where FileName endswith ".exe"
+    | where FileName !~ "certutil.exe"
+    | project
+        DeviceId,
+        ExecutionTime = Timestamp,
+        ExecutedFile = FileName,
+        ExecutionFolderPath = FolderPath,
+        ExecutionCommandLine = ProcessCommandLine,
+        ExecutionAccount = AccountName,
+        InitiatingProcessFileName,
+        InitiatingProcessCommandLine;
+
+CertutilDownloads
+| join kind=inner Executions on DeviceId
+| where ExecutionTime > DownloadTime
+| where ExecutionTime <= DownloadTime + CorrelationWindow
+| where tolower(ExecutedFile) == tolower(DownloadedFile)
+| extend TimeToExecution = ExecutionTime - DownloadTime
+| project
+    DeviceName,
+    DeviceId,
+    AccountName,
+    DownloadTime,
+    DownloadCommandLine,
+    DownloadURL,
+    DownloadedFile,
+    ExecutionTime,
+    ExecutedFile,
+    ExecutionFolderPath,
+    ExecutionCommandLine,
+    ExecutionAccount,
+    InitiatingProcessFileName,
+    InitiatingProcessCommandLine,
+    TimeToExecution
+| order by DownloadTime desc
